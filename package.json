@@ -1,0 +1,9 @@
+{
+  "name": "tv-hub",
+  "version": "2.0.0",
+  "description": "Connects a Samsung TV to an app server on your home network",
+  "packageType": "app",
+  "appName": "TV Hub",
+  "appPath": "app/index.html",
+  "keys": []
+}

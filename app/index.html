@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TV Hub</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f14; color: #f2f5f8; font-family: "SamsungOne", "Segoe UI", Arial, sans-serif; }
+  main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  h1 { margin: 0 0 3vh; font-size: 3vw; font-weight: 600; }
+  #address { box-sizing: border-box; width: 50vw; height: 4.4vw; line-height: 4.4vw; padding: 0 1.4vw; border-radius: 0.6vw; background: #18212b; font-size: 2.2vw; }
+  #status { height: 2.2vw; margin: 1.6vh 0 2.4vh; font-size: 1.5vw; color: #9fb0c0; }
+  .row { display: flex; justify-content: center; gap: 0.6vw; margin-bottom: 0.6vw; }
+  .key { box-sizing: border-box; min-width: 4.4vw; height: 4.4vw; line-height: 4.4vw; padding: 0 1vw; border-radius: 0.5vw; background: #18212b; font-size: 1.8vw; text-align: center; }
+  .key.focused { background: #f2f5f8; color: #0b0f14; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Connect to your PC</h1>
+  <div id="address"></div>
+  <div id="status"></div>
+  <div id="keys"></div>
+</main>
+<script>
+  var STORAGE_KEY = 'pc-address';
+  var DEFAULT_PORT = '8770';
+  var PING_TIMEOUT_MS = 3000;
+  var RETRY_MS = 5000;
+  var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13 };
+  var ROWS = [
+    '1234567890'.split(''),
+    'qwertyuiop'.split(''),
+    'asdfghjkl'.split(''),
+    'zxcvbnm.-:'.split(''),
+    ['Delete', 'Connect']
+  ];
+
+  var address = '';
+  var row = 0;
+  var col = 0;
+  var retryTimer = null;
+  var attempt = 0;
+
+  function loadSaved() {
+    try { return localStorage.getItem(STORAGE_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function save(value) {
+    try { localStorage.setItem(STORAGE_KEY, value); } catch (e) { /* It just asks again next time. */ }
+  }
+
+  function setStatus(text) {
+    document.getElementById('status').textContent = text;
+  }
+
+  function render() {
+    document.getElementById('address').textContent = address;
+    var keys = document.getElementById('keys');
+    keys.innerHTML = '';
+    ROWS.forEach(function (labels, rowIndex) {
+      var rowEl = document.createElement('div');
+      rowEl.className = 'row';
+      labels.forEach(function (label, colIndex) {
+        var key = document.createElement('div');
+        key.className = 'key' + (rowIndex === row && colIndex === col ? ' focused' : '');
+        key.textContent = label;
+        rowEl.appendChild(key);
+      });
+      keys.appendChild(rowEl);
+    });
+  }
+
+  function baseUrl(value) {
+    return 'http://' + value + (value.indexOf(':') === -1 ? ':' + DEFAULT_PORT : '');
+  }
+
+  function stopTrying() {
+    attempt += 1;
+    clearTimeout(retryTimer);
+  }
+
+  function connect(value) {
+    stopTrying();
+    var thisAttempt = attempt;
+    var url = baseUrl(value);
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, PING_TIMEOUT_MS);
+    setStatus('Connecting...');
+
+    function failed() {
+      clearTimeout(timeout);
+      if (thisAttempt !== attempt) return;
+      setStatus('Can\'t reach ' + value + '. Trying again...');
+      retryTimer = setTimeout(function () { connect(value); }, RETRY_MS);
+    }
+
+    fetch(url + '/__ping', { cache: 'no-store', signal: controller.signal })
+      .then(function (res) {
+        clearTimeout(timeout);
+        if (thisAttempt !== attempt) return;
+        if (!res.ok) return failed();
+        save(value);
+        location.replace(url + '/');
+      })
+      .catch(failed);
+  }
+
+  function pressFocusedKey() {
+    var label = ROWS[row][col];
+    if (label === 'Connect') {
+      if (address) connect(address);
+      return;
+    }
+    stopTrying();
+    setStatus('');
+    address = label === 'Delete' ? address.slice(0, -1) : address + label;
+  }
+
+  function moveRow(step) {
+    var next = row + step;
+    if (next < 0 || next >= ROWS.length) return;
+    row = next;
+    col = Math.min(col, ROWS[row].length - 1);
+  }
+
+  document.addEventListener('keydown', function (event) {
+    var code = event.keyCode;
+    if (code === KEY.LEFT) col = Math.max(0, col - 1);
+    else if (code === KEY.RIGHT) col = Math.min(ROWS[row].length - 1, col + 1);
+    else if (code === KEY.UP) moveRow(-1);
+    else if (code === KEY.DOWN) moveRow(1);
+    else if (code === KEY.ENTER) pressFocusedKey();
+    else return;
+    render();
+  });
+
+  address = loadSaved();
+  render();
+  if (address) connect(address);
+</script>
+</body>
+</html>
